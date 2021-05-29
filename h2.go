@@ -1,4 +1,4 @@
-package h2s
+package h2
 
 import (
 	"io"

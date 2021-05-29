@@ -1,4 +1,4 @@
-module github.com/cssivision/h2s
+module github.com/cssivision/h2
 
 go 1.15
 
