@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"sync"
 
 	"golang.org/x/net/http2"
 )
@@ -13,6 +14,10 @@ var clientPreface []byte = []byte(http2.ClientPreface)
 type Client struct {
 	conn   io.ReadWriteCloser
 	framer *framer
+
+	mu            sync.Mutex // guard the following variables
+	state         State
+	activeStreams map[uint32]*Stream
 }
 
 func Handshake(ctx context.Context, conn io.ReadWriteCloser, opts *ConnectOptions) (*Client, error) {
@@ -38,7 +43,7 @@ func Handshake(ctx context.Context, conn io.ReadWriteCloser, opts *ConnectOption
 	}
 
 	var settings []http2.Setting
-	if opts.InitialWindowSize != defaultWindowSize {
+	if opts.InitialWindowSize >= defaultWindowSize {
 		settings = append(settings, http2.Setting{
 			ID:  http2.SettingInitialWindowSize,
 			Val: opts.InitialWindowSize,
@@ -53,6 +58,41 @@ func Handshake(ctx context.Context, conn io.ReadWriteCloser, opts *ConnectOption
 	if err := client.framer.fr.WriteSettings(settings...); err != nil {
 		return nil, err
 	}
-
+	if delta := opts.InitialConnWindowSize - defaultConnWindowSize; delta > 0 {
+		if err := client.framer.fr.WriteWindowUpdate(0, delta); err != nil {
+			return nil, fmt.Errorf("hankshake: failed to write window update: %v", err)
+		}
+	}
 	return client, nil
+}
+
+func (c *Client) reader() {
+	frame, err := c.framer.fr.ReadFrame()
+	if err != nil {
+		c.Close()
+		return
+	}
+	sf, ok := frame.(*http2.SettingsFrame)
+	if !ok {
+		c.Close()
+		return
+	}
+}
+
+func (c *Client) handleSettings(f *http2.SettingsFrame, isFirst bool) {
+	if f.IsAck() {
+		return
+	}
+}
+
+func (c *Client) Close() error {
+	c.mu.Lock()
+	if c.state == closing {
+		c.mu.Unlock()
+		return nil
+	}
+
+	c.state = closing
+
+	return nil
 }

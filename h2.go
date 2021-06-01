@@ -7,11 +7,20 @@ import (
 	"golang.org/x/net/http2/hpack"
 )
 
+type State int
+
+const (
+	connected State = iota
+	closing
+	closed
+)
+
 const (
 	defaultMaxHeaderListSize = uint32(16 << 20)
 	defaultMaxFramSize       = uint32(16384)
 	defaultHeaderTableSize   = uint32(4096)
-	defaultWindowSize        = 65535
+	defaultWindowSize        = uint32(65535)
+	defaultConnWindowSize    = uint32(65535)
 )
 
 // ConnectOptions options for http2 connect with the server.
